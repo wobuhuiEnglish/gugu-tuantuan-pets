@@ -612,7 +612,8 @@ final class KeyPanel: NSPanel {
 final class TodoWindow: NSObject, NSTextFieldDelegate {
     let panel: KeyPanel
     private let store: TodoStore
-    private let stack = NSStackView()
+    private let doc = FlippedView()
+    private let scroll = NSScrollView()
     private let input = NSTextField()
     private let empty = NSTextField(labelWithString: "还没有待办。下面输入一条试试～")
     init(store: TodoStore) {
@@ -626,13 +627,6 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         panel.hidesOnDeactivate = false
         panel.onEscape = { [weak self] in self?.panel.orderOut(nil) }
         let content = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
-        let doc = FlippedView()
-        doc.addSubview(stack)
-        let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.documentView = doc
@@ -643,8 +637,11 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         let clear = NSButton(title: "清除已完成", target: self, action: #selector(clearDone))
         clear.bezelStyle = .inline
         for v in [scroll, input, clear] { v.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(v) }
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            // Fixed comfortable size: without this the window collapses to its narrowest content.
+            content.widthAnchor.constraint(equalToConstant: 340),
+            content.heightAnchor.constraint(greaterThanOrEqualToConstant: 380),
             scroll.topAnchor.constraint(equalTo: content.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -654,13 +651,10 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
             input.bottomAnchor.constraint(equalTo: clear.topAnchor, constant: -6),
             clear.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
             clear.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
-            stack.topAnchor.constraint(equalTo: doc.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
-            stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            doc.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            doc.bottomAnchor.constraint(equalTo: stack.bottomAnchor),
         ])
         panel.contentView = content
+        panel.setContentSize(NSSize(width: 340, height: 400))
+        panel.contentMinSize = NSSize(width: 340, height: 300)
         store.onChange = { [weak self] in self?.reload() }
         reload()
     }
@@ -677,30 +671,43 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(input)
     }
+    /// Rows are laid out by hand at a fixed height: simple and never overlaps.
     func reload() {
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if store.items.isEmpty { stack.addArrangedSubview(empty); empty.textColor = .secondaryLabelColor }
-        for t in store.items.sorted(by: { ($0.done ? 1 : 0, $0.due ?? .distantFuture) < ($1.done ? 1 : 0, $1.due ?? .distantFuture) }) {
+        doc.subviews.forEach { $0.removeFromSuperview() }
+        let width: CGFloat = 340, rowH: CGFloat = 30, pad: CGFloat = 12
+        var y: CGFloat = 10
+        if store.items.isEmpty {
+            empty.textColor = .secondaryLabelColor
+            empty.frame = NSRect(x: pad, y: y, width: width - pad * 2, height: 22)
+            doc.addSubview(empty)
+            y += rowH
+        }
+        let sorted = store.items.sorted { ($0.done ? 1 : 0, $0.due ?? .distantFuture) < ($1.done ? 1 : 0, $1.due ?? .distantFuture) }
+        for t in sorted {
             var title = t.text
             if let d = t.due { title = "⏰ \(dueLabel(d))  " + title }
             let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(toggled(_:)))
             box.state = t.done ? .on : .off
             box.identifier = NSUserInterfaceItemIdentifier(t.id.uuidString)
+            box.font = NSFont.systemFont(ofSize: 13)
             if t.done {
                 box.attributedTitle = NSAttributedString(string: title, attributes: [
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: NSColor.secondaryLabelColor])
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 13)])
             }
             box.lineBreakMode = .byTruncatingTail
+            box.frame = NSRect(x: pad, y: y + 4, width: width - pad * 2 - 30, height: 22)
             let del = NSButton(title: "×", target: self, action: #selector(removed(_:)))
             del.bezelStyle = .inline
             del.identifier = box.identifier
-            let row = NSStackView(views: [box, del])
-            row.orientation = .horizontal
-            box.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            box.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            stack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24).isActive = true
+            del.toolTip = "删除"
+            del.frame = NSRect(x: width - pad - 24, y: y + 4, width: 24, height: 22)
+            let line = NSBox(frame: NSRect(x: pad, y: y + rowH - 1, width: width - pad * 2, height: 1))
+            line.boxType = .separator
+            [box, del, line].forEach { doc.addSubview($0) }
+            y += rowH
         }
+        doc.frame = NSRect(x: 0, y: 0, width: width, height: max(y + 10, scroll.contentSize.height))
     }
     @objc private func addFromInput() {
         let text = input.stringValue
@@ -914,6 +921,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         quickNote.onSubmit = { [weak self] text in self?.addTodo(text) }
         registerHotKey { [weak self] in self?.openQuickNote() }
+        if ProcessInfo.processInfo.environment["CATPETS_OPEN"] == "todos" { DispatchQueue.main.async { self.openTodos() } }
+        if let out = ProcessInfo.processInfo.environment["CATPETS_SNAP"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                guard let v = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey })?.contentView,
+                      let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+                v.cacheDisplay(in: v.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
+            }
+        }
+        if ProcessInfo.processInfo.environment["CATPETS_OPEN"] == "note" { DispatchQueue.main.async { self.openQuickNote() } }
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
         timer.tolerance = 0.006
         RunLoop.main.add(timer, forMode: .common)
