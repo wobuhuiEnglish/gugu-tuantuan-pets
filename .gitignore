@@ -1,0 +1,4 @@
+app/.build/
+app/*.app
+*.zip
+.DS_Store
