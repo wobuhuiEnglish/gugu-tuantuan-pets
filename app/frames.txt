@@ -17,3 +17,4 @@ pair/sleep2 pair-sleep2
 pair/eat2 pair-eat2
 pair/cushion2 pair-cushion2
 pair/basket-fix pair-basket-fix
+pair/eatback pair-eatback

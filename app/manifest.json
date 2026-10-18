@@ -413,6 +413,37 @@
             1000
           ]
         ]
+      },
+      "group": "eat"
+    },
+    {
+      "id": "eatback",
+      "group": "eat",
+      "label": "一起吃饭",
+      "height": 89,
+      "seconds": 10,
+      "action": {
+        "label": "一起吃饭（背影）",
+        "dir": "pair/eatback",
+        "loop": true,
+        "seq": [
+          [
+            0,
+            420
+          ],
+          [
+            1,
+            420
+          ],
+          [
+            2,
+            420
+          ],
+          [
+            3,
+            420
+          ]
+        ]
       }
     },
     {
