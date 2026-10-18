@@ -1,3 +1,5 @@
+<img src="app/icon/AppIcon-1024.png" width="160" align="right">
+
 # 谷谷和团团 · Mac 桌面宠物
 
 两只真实存在的猫——胖胖的美短**谷谷**和小白猫**团团**——住进你的 Mac 桌面。
