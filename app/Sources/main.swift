@@ -262,15 +262,18 @@ final class Cat {
     }
     func tilt() { lastActive = now; tiltStart = now }
 
+    /// Waking from a nap: stretch first if we have the frames.
+    func wake() { play(actions["stretch"] != nil ? "stretch" : "idle") }
+
     func hovered() {
         if owner?.isQuiet == true { return }
         guard !dragging, now - hopStart > 0.6 else { return }
-        if action == "sleep" { play("idle"); return }
+        if action == "sleep" { wake(); return }
         if action == "idle" { hop() }
     }
     func clicked() {
         if owner?.isQuiet == true { return }
-        if action == "sleep" { play("idle"); return }
+        if action == "sleep" { wake(); return }
         guard action == "idle" else { return }
         let choices = spec.click.filter { actions[$0] != nil }
         if let pick = choices.randomElement() { play(pick) } else { tilt() }
@@ -920,8 +923,33 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         quickNote.onSubmit = { [weak self] text in self?.addTodo(text) }
+        // First launch of the day: both cats wake up with a big stretch.
+        let today = DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .none)
+        if settings.string(forKey: "lastStretchDay") != today {
+            settings.set(today, forKey: "lastStretchDay")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                self?.cats.forEach { $0.wake() }
+                self?.say("早上好～伸个懒腰再开工", seconds: 5)
+            }
+        }
         registerHotKey { [weak self] in self?.openQuickNote() }
         if ProcessInfo.processInfo.environment["CATPETS_OPEN"] == "todos" { DispatchQueue.main.async { self.openTodos() } }
+        // Debug: CATPETS_DEMO=<action> plays it on both cats; CATPETS_SNAPCATS=<dir> saves what they show.
+        if let demo = ProcessInfo.processInfo.environment["CATPETS_DEMO"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.cats.forEach { $0.play(demo) } }
+        }
+        if let dir = ProcessInfo.processInfo.environment["CATPETS_SNAPCATS"] {
+            for (n, delay) in [3.2, 4.0, 4.8, 6.0].enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    for c in self?.cats ?? [] {
+                        let v = c.view
+                        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
+                        v.cacheDisplay(in: v.bounds, to: rep)
+                        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/\(c.spec.id)-\(n).png"))
+                    }
+                }
+            }
+        }
         if let out = ProcessInfo.processInfo.environment["CATPETS_SNAP"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 guard let v = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey })?.contentView,
