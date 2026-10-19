@@ -3,7 +3,7 @@ import ImageIO
 import Carbon
 
 // 谷谷 & 团团 desktop pets. Two borderless panels, one per cat.
-// Artwork is AI-generated keyframes; breathing, hops, tilts and drag swing are done in code
+// Artwork is AI-generated keyframes; the only code-driven motion is a hop for reminders
 // so the cats stay smooth even where the generated frames are sparse.
 
 // MARK: - Data
@@ -24,7 +24,7 @@ struct CatSpec: Decodable {
     let height: Double           // on-screen height (pt) of idle frame 0 at 100% size
     let actions: [String: ActionSpec]
     let order: [String]          // menu order
-    let click: [String]          // actions a click picks from; empty = head tilt
+    let click: [String]          // actions a click picks from
 }
 
 struct PairSpec: Decodable {
@@ -136,15 +136,15 @@ final class Cat {
     private let pxPerPt: Double            // sprite pixels per point at 100% size
     private let halfWidthPx: Double        // widest reach left/right of the feet over all frames
     private let tallestPx: Double
-    var size: Double { settings.double(forKey: "scale") }
+    /// While tucked into the Dock gap the cats shrink to fit; nil = the user's size setting.
+    var sizeOverride: Double?
+    var size: Double { sizeOverride ?? settings.double(forKey: "scale") }
 
     private(set) var action = "idle"
     private var actionStart = 0.0
     private var hopStart = -10.0
-    private var tiltStart = -10.0
     private var shakeStart = -10.0
     private var dragging = false
-    private var dragAngle = 0.0, swingFrom = 0.0, swingStart = -10.0
     private var lastDragX = 0.0
     private var facingLeft = false
     private var lastActive = 0.0
@@ -186,7 +186,7 @@ final class Cat {
         resize()
     }
 
-    // Big enough for the widest/tallest frame, plus headroom for hops, tilts and swings.
+    // Big enough for the widest/tallest frame, plus headroom for the reminder hop.
     var panelSize: NSSize {
         let w = max(spec.height * 1.2, 2 * halfWidthPx / pxPerPt * 1.1)
         let h = tallestPx / pxPerPt + spec.height * 0.3
@@ -212,7 +212,26 @@ final class Cat {
         keepOnScreen()
     }
 
-    func savePosition() { settings.set([panel.frame.minX, panel.frame.minY], forKey: "pos-\(spec.id)") }
+    func savePosition() {
+        if owner?.isQuiet == true { return }   // the hideout spot is temporary; keep the real one
+        settings.set([panel.frame.minX, panel.frame.minY], forKey: "pos-\(spec.id)")
+    }
+
+    /// Size (pt) of the sleeping pose at a given scale, used to fit the cats into a hideout.
+    func sleepFootprint(scale: Double) -> NSSize {
+        guard let a = actions["sleep"] ?? actions["idle"], let sp = a.sprites.first else { return .zero }
+        let k = scale / pxPerPt * (a.spec.scale ?? 1)
+        return NSSize(width: Double(sp.image.width) * k, height: Double(sp.image.height) * k)
+    }
+    /// Put the cat's feet at (midX, bottom) without the usual keep-on-screen clamping.
+    func place(midX: Double, bottom: Double) {
+        resizeInPlace()
+        panel.setFrameOrigin(NSPoint(x: midX - panel.frame.width / 2, y: bottom - 2))
+    }
+    private func resizeInPlace() {
+        let s = panelSize
+        panel.setFrame(NSRect(x: panel.frame.midX - s.width / 2, y: panel.frame.minY, width: s.width, height: s.height), display: true)
+    }
 
     func keepOnScreen() {
         let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(panel.frame) }) ?? NSScreen.main
@@ -232,7 +251,6 @@ final class Cat {
         lastActive = now
         action = key
         actionStart = now
-        hopStart = now - 0.36       // small "pop" into the new pose
     }
     func hop() { lastActive = now; hopStart = now }
 
@@ -260,7 +278,6 @@ final class Cat {
         hopStart = -10
         walkEnd = now + Double.random(in: 2.5...5)
     }
-    func tilt() { lastActive = now; tiltStart = now }
 
     /// Waking from a nap: stretch first if we have the frames.
     func wake() { play(actions["stretch"] != nil ? "stretch" : "idle") }
@@ -269,16 +286,16 @@ final class Cat {
         if owner?.isQuiet == true { return }
         guard !dragging, now - hopStart > 0.6 else { return }
         if action == "sleep" { wake(); return }
-        if action == "idle" { hop() }
     }
     func clicked() {
         if owner?.isQuiet == true { return }
         if action == "sleep" { wake(); return }
         guard action == "idle" else { return }
         let choices = spec.click.filter { actions[$0] != nil }
-        if let pick = choices.randomElement() { play(pick) } else { tilt() }
+        if let pick = choices.randomElement() { play(pick) }
     }
     func beginDrag() {
+        if owner?.isQuiet == true { return }
         dragging = true
         lastActive = now
         dragVX = 0; dragVY = 0
@@ -287,12 +304,11 @@ final class Cat {
         else if action == "sleep" { play("idle") }
     }
     func drag(to origin: NSPoint, pointer: NSPoint) {
+        if owner?.isQuiet == true { return }
         let dx = origin.x - panel.frame.minX
         dragVX = dragVX * 0.6 + dx * 0.4
         dragVY = dragVY * 0.6 + (origin.y - panel.frame.minY) * 0.4
         if abs(dx) > 1.5 { facingLeft = dx < 0 }
-        // Body swings opposite to the motion, like being carried by the scruff.
-        dragAngle = dragAngle * 0.7 + clamp(-dx * 1.6, -18, 18) * 0.3
         let screen = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main
         var o = origin
         if let vis = screen?.visibleFrame {
@@ -302,10 +318,8 @@ final class Cat {
         panel.setFrameOrigin(o)
     }
     func endDrag() {
+        if owner?.isQuiet == true { return }
         dragging = false
-        swingFrom = dragAngle == 0 ? 8 : dragAngle
-        swingStart = now
-        dragAngle = 0
         if action == "held" || action == "walk" { play("idle") }
         savePosition()
         lastActive = now
@@ -376,25 +390,18 @@ final class Cat {
         let w = Double(sprite.image.width) * scale, h = Double(sprite.image.height) * scale
         let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
-        // Breathing: slow, tiny vertical swell anchored at the feet.
-        let b = reduce ? 0 : sin(t * 2 * .pi / 3.4)
-        var sx = 1 + 0.006 * b, sy = 1 + 0.016 * b
-        var lift = 0.0, angle = 0.0
-        if !reduce {
+        // The cats hold still between frames: no breathing, tilting or swinging.
+        // The only code-driven motion left is the hop used to flag a reminder.
+        var sx = 1.0, sy = 1.0, lift = 0.0
+                if !reduce {
             let (l, hx, hy) = hopCurve(t - hopStart, height: spec.height * size * 0.14)
             lift = l; sx *= hx; sy *= hy
-            let tt = t - tiltStart
-            if tt >= 0, tt < 1.3 { angle += 7 * sin(.pi * tt / 1.3) * (tt < 0.65 ? 1 : 0.6) }
-            if dragging && action != "walk" { angle += dragAngle }
-            let st = t - swingStart
-            if !dragging, st >= 0, st < 1.6 { angle += swingFrom * exp(-3.2 * st) * cos(11 * st) }
         }
 
         let footX = bounds.midX, footY = bounds.minY + 2 + lift
         ctx.saveGState()
         ctx.interpolationQuality = .high
         ctx.translateBy(x: footX, y: footY)
-        ctx.rotate(by: angle * .pi / 180)
         ctx.scaleBy(x: sx * (facingLeft ? -1 : 1), y: sy)
         let rect = CGRect(x: -sprite.footX * w, y: 0, width: w, height: h)
         ctx.draw(sprite.image, in: rect)
@@ -454,11 +461,9 @@ final class Pair {
         let sprite = frames.sprites[frames.frame(at: t)]
         let k = scale / pxPerPt
         let w = Double(sprite.image.width) * k, h = Double(sprite.image.height) * k
-        let b = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : sin(t * 2 * .pi / 3.6)
         ctx.saveGState()
         ctx.interpolationQuality = .high
         ctx.translateBy(x: bounds.midX, y: bounds.minY + 2)
-        ctx.scaleBy(x: 1 + 0.006 * b, y: 1 + 0.014 * b)
         ctx.draw(sprite.image, in: CGRect(x: -sprite.footX * w, y: 0, width: w, height: h))
         ctx.restoreGState()
     }
@@ -850,6 +855,36 @@ enum Quiet {
     }
 }
 
+// MARK: - Where to hide
+
+/// Estimates the Dock's width from its settings (icon count × icon size) — macOS has no API for it
+/// without accessibility permission — and returns the free strip to the right of it, if any.
+enum Hideout {
+    static func dockGap() -> NSRect? {
+        if ProcessInfo.processInfo.environment["CATPETS_NOGAP"] != nil { return nil }   // debug: pretend the Dock is full width
+        guard let screen = NSScreen.screens.first(where: { $0.frame.origin == .zero }) ?? NSScreen.main else { return nil }
+        let f = screen.frame, v = screen.visibleFrame
+        let stripH = v.minY - f.minY
+        guard stripH >= 40 else { return nil }          // Dock hidden, or on the left/right edge
+        func pref(_ k: String) -> Any? { CFPreferencesCopyAppValue(k as CFString, "com.apple.dock" as CFString) }
+        let apps = pref("persistent-apps") as? [[String: Any]] ?? []
+        let others = pref("persistent-others") as? [[String: Any]] ?? []
+        let pinned = Set(apps.compactMap { (($0["tile-data"] as? [String: Any])?["bundle-identifier"] as? String) })
+        let showRecents = (pref("show-recents") as? Bool) ?? true
+        let recents = showRecents ? min(3, (pref("recent-apps") as? [Any])?.count ?? 0) : 0
+        let running = NSWorkspace.shared.runningApplications.filter {
+            $0.activationPolicy == .regular && !pinned.contains($0.bundleIdentifier ?? "") && $0.bundleIdentifier != "com.apple.finder"
+        }.count
+        let icons = Double(1 + apps.count + max(recents, running) + others.count + 1)   // Finder … Trash
+        let tile = (pref("tilesize") as? Double) ?? 48
+        let separators = (recents > 0 || running > 0) ? 2.0 : 1.0
+        let dockW = (icons * (tile + 4) + separators * tile * 0.45 + tile * 0.8) * 1.08   // a little safety margin
+        let gapW = (f.width - dockW) / 2 - 10
+        guard gapW > 60 else { return nil }
+        return NSRect(x: f.maxX - gapW, y: f.minY, width: gapW, height: stripH)
+    }
+}
+
 // MARK: - App
 
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -871,6 +906,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var strolls: Bool { settings.bool(forKey: "strolls") && !isQuiet }
     private(set) var isQuiet = false
     private var autoQuiet: Bool { settings.bool(forKey: "autoQuiet") }
+    /// "top" = always in front, "behind" = sits on the desktop under windows, "corner" = naps in a hideout.
+    private var placement: String { settings.string(forKey: "placement") ?? "top" }
+    private let behindLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+    private var normalLevel: NSWindow.Level { placement == "behind" ? behindLevel : .floating }
     private var savedSpots: [String: NSPoint] = [:]
     private var lastQuietCheck = 0.0, lastSlowTick = 0.0
     private let bubble = Bubble()
@@ -906,7 +945,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pairPanel.isOpaque = false
         pairPanel.backgroundColor = .clear
         pairPanel.hasShadow = false
-        pairPanel.level = .floating
+        pairPanel.level = normalLevel
         pairPanel.hidesOnDeactivate = false
         pairPanel.isReleasedWhenClosed = false
         pairPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -922,6 +961,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status.button?.action = #selector(openStatusMenu)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        for c in cats { c.panel.level = normalLevel }
         quickNote.onSubmit = { [weak self] text in self?.addTodo(text) }
         // First launch of the day: both cats wake up with a big stretch.
         let today = DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .none)
@@ -995,7 +1035,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for t in todos.takeDue() { remind(t) }
         if real - lastQuietCheck > 2 {
             lastQuietCheck = real
-            let want = autoQuiet && Quiet.shouldBeQuiet()
+            let want = placement == "corner" || (autoQuiet && Quiet.shouldBeQuiet())
             if ProcessInfo.processInfo.environment["CATPETS_DEBUG"] != nil { print("quiet check:", autoQuiet, want, isQuiet) }
             if want != isQuiet { want ? enterQuiet() : leaveQuiet() }
         }
@@ -1012,7 +1052,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     func addTodo(_ text: String) {
         guard let t = todos.add(text) else { return }
-        speaker?.hop()
         if let d = t.due { say("记下了～ \(dueLabel(d)) 提醒你：\(t.text)", seconds: 5) }
         else { say("记下了：\(t.text)", seconds: 4) }
     }
@@ -1025,28 +1064,68 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !autoQuiet && isQuiet { leaveQuiet() }
     }
 
-    /// Fullscreen video or a call: both cats tuck into the corner and nap, out of the way.
+    /// Fullscreen video, a call, or the "hide in the corner" setting: both cats curl up asleep out of the way.
+    /// If there's free room beside the Dock they shrink into it; otherwise they nap behind the windows.
     private func enterQuiet() {
         isQuiet = true
         meeting = nil
         if activePair != nil { endPair() }
-        savedSpots = Dictionary(uniqueKeysWithValues: cats.map { ($0.spec.id, $0.panel.frame.origin) })
+        if savedSpots.isEmpty {
+            savedSpots = Dictionary(uniqueKeysWithValues: cats.map { ($0.spec.id, $0.panel.frame.origin) })
+        }
+        let visible = cats.filter { $0.panel.isVisible }
+        for cat in visible { cat.cancelWalk(); cat.play(cat.actions["sleep"] != nil ? "sleep" : "idle") }
+        let pad = 8.0
+        if let gap = Hideout.dockGap() {
+            // Shrink both by the same factor so the tallest sleeping cat fits the strip height.
+            let tallest = visible.map { $0.sleepFootprint(scale: 1).height }.max() ?? 1
+            let k = min(settings.double(forKey: "scale"), (gap.height - pad) / tallest)
+            let widths = visible.map { $0.sleepFootprint(scale: k).width }
+            if k > 0.25, widths.reduce(0, +) + pad * Double(widths.count + 1) <= gap.width {
+                var right = gap.maxX - pad
+                for (cat, w) in zip(visible, widths) {
+                    cat.sizeOverride = k
+                    cat.place(midX: right - w / 2, bottom: gap.minY + 3)
+                    cat.panel.level = .floating
+                    cat.panel.alphaValue = 1
+                    right -= w + pad
+                }
+                return
+            }
+        }
+        // No room beside the Dock: nap in the bottom-right corner, underneath every window.
         let vis = NSScreen.main?.visibleFrame ?? .zero
-        var x = vis.maxX - 10
-        for cat in cats where cat.panel.isVisible {
-            cat.cancelWalk()
-            x -= cat.panel.frame.width * 0.8
-            cat.panel.setFrameOrigin(NSPoint(x: x, y: vis.minY))
-            cat.play(cat.actions["sleep"] != nil ? "sleep" : "idle")
-            cat.panel.alphaValue = 0.85
+        var right = vis.maxX - pad
+        for cat in visible {
+            cat.sizeOverride = nil
+            let w = cat.sleepFootprint(scale: cat.size).width
+            cat.place(midX: right - w / 2, bottom: vis.minY)
+            cat.panel.level = behindLevel
+            cat.panel.alphaValue = 1
+            right -= w + pad
         }
     }
     private func leaveQuiet() {
         isQuiet = false
         for cat in cats {
-            if let p = savedSpots[cat.spec.id] { cat.panel.setFrameOrigin(p) }
+            cat.sizeOverride = nil
+            cat.resize()
+            if let p = savedSpots[cat.spec.id] { cat.panel.setFrameOrigin(p); cat.keepOnScreen() }
+            cat.panel.level = normalLevel
             cat.panel.alphaValue = 1
-            if cat.panel.isVisible { cat.play("idle"); cat.hop() }
+            if cat.panel.isVisible { cat.play("idle") }
+        }
+        savedSpots = [:]
+    }
+    @objc private func setPlacement(_ s: NSMenuItem) {
+        guard let p = s.representedObject as? String else { return }
+        settings.set(p, forKey: "placement")
+        pairPanel.level = normalLevel
+        if p == "corner" {
+            enterQuiet()
+        } else {
+            if isQuiet { leaveQuiet() }
+            for c in cats { c.panel.level = normalLevel }
         }
     }
 
@@ -1101,7 +1180,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pairPanel.orderOut(nil)
         if let g = gugu { g.panel.setFrameOrigin(NSPoint(x: f.midX - g.panel.frame.width * 0.95, y: f.minY)) }
         if let w = tuantuan { w.panel.setFrameOrigin(NSPoint(x: f.midX - w.panel.frame.width * 0.05, y: f.minY)) }
-        for c in cats { show(c); c.play("idle"); c.hop(); c.savePosition() }
+        for c in cats { show(c); c.play("idle"); c.savePosition() }
     }
     /// Called when a cat is about to nap: if the other one is idle nearby, nap together instead.
     func wantsCuddle(from cat: Cat) -> Bool {
@@ -1157,8 +1236,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     _ = add(cat.spec.actions[key]!.label, #selector(playAction(_:)), to: m, tag: i, rep: key)
                 }
                 if cat.actions["walk"] != nil { _ = add("散步", #selector(strollCat(_:)), to: m, tag: i) }
-                _ = add("跳一下", #selector(hopCat(_:)), to: m, tag: i)
-                _ = add("歪头", #selector(tiltCat(_:)), to: m, tag: i)
             }
         }
         if !pairs.isEmpty {
@@ -1177,6 +1254,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         on: abs(settings.double(forKey: "scale") * 100 - Double(pct)) < 1)
             }
             sizeItem.submenu = sizes
+            let placeItem = add("位置", #selector(noop), to: m)
+            let places = NSMenu()
+            for (key, title) in [("top", "总在最前"), ("behind", "不置顶（会被窗口挡住）"), ("corner", "藏在角落睡觉")] {
+                _ = add(title, #selector(setPlacement(_:)), to: places, rep: key, on: placement == key)
+            }
+            placeItem.submenu = places
             _ = add("偶尔自己散步、凑一起", #selector(toggleStrolls), to: m, on: settings.bool(forKey: "strolls"))
             _ = add("全屏 / 开会时自动安静", #selector(toggleAutoQuiet), to: m, on: autoQuiet)
             m.addItem(.separator())
@@ -1226,8 +1309,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let p = randomVariant(pairGroups[s.tag].key) { startPair(p) }
     }
     @objc private func toggleStrolls() { settings.set(!settings.bool(forKey: "strolls"), forKey: "strolls") }
-    @objc private func hopCat(_ s: NSMenuItem) { if paused { togglePause() }; show(cats[s.tag]); cats[s.tag].hop() }
-    @objc private func tiltCat(_ s: NSMenuItem) { if paused { togglePause() }; show(cats[s.tag]); cats[s.tag].tilt() }
     @objc private func toggleCat(_ s: NSMenuItem) {
         let cat = cats[s.tag]
         if cat.panel.isVisible { cat.panel.orderOut(nil); settings.set(true, forKey: "hidden-\(cat.spec.id)") } else { show(cat) }
@@ -1242,6 +1323,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         paused.toggle()
     }
     @objc private func resetPositions() {
+        if placement == "corner" { settings.set("top", forKey: "placement"); pairPanel.level = normalLevel }
+        if isQuiet { leaveQuiet() }
         let vis = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         var x = vis.maxX - 60
         for cat in cats {
@@ -1251,7 +1334,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             x -= 10
         }
     }
-    @objc private func screensChanged() { for cat in cats { cat.keepOnScreen(); cat.savePosition() } }
+    @objc private func screensChanged() {
+        if isQuiet { enterQuiet(); return }
+        for cat in cats { cat.keepOnScreen(); cat.savePosition() }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         for cat in cats { show(cat) }
