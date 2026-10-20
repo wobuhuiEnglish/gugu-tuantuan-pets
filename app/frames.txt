@@ -24,3 +24,4 @@ tuantuan/stretch tuantuan-stretch2
 tuantuan/laptop tuantuan-laptop
 tuantuan/belly tuantuan-belly
 pair/sleephug pair-hug2
+pair/bowl pair-bowl
