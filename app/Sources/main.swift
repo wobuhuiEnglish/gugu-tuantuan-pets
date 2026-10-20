@@ -912,6 +912,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var normalLevel: NSWindow.Level { placement == "behind" ? behindLevel : .floating }
     private var savedSpots: [String: NSPoint] = [:]
     private var lastQuietCheck = 0.0, lastSlowTick = 0.0
+    /// While the user types, one cat taps on its laptop; they take turns.
+    private var typeAlong: Bool { settings.bool(forKey: "typeAlong") }
+    private var typist: Cat?, typistSince = 0.0
+    private let launchedAt = ProcessInfo.processInfo.systemUptime
     private let bubble = Bubble()
     let todos = TodoStore()
     private lazy var todoWindow = TodoWindow(store: todos)
@@ -924,7 +928,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .first(where: { $0.processIdentifier != me }) {
             other.activate(options: []); NSApp.terminate(nil); return
         }
-        settings.register(defaults: ["scale": 1.0, "strolls": true, "autoQuiet": true])
+        settings.register(defaults: ["scale": 1.0, "strolls": true, "autoQuiet": true, "typeAlong": true])
         do {
             guard let root = Bundle.main.url(forResource: "cats", withExtension: nil) else {
                 throw NSError(domain: "CatPets", code: 3, userInfo: [NSLocalizedDescriptionKey: "未找到应用内的猫咪图片。请保留完整的应用包。"])
@@ -1051,6 +1055,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if ProcessInfo.processInfo.environment["CATPETS_DEBUG"] != nil { print("quiet check:", autoQuiet, want, isQuiet) }
             if want != isQuiet { want ? enterQuiet() : leaveQuiet() }
         }
+        typeAlongTick()
     }
     /// Which cat speaks: Gugu for reminders, whichever is visible otherwise.
     private var speaker: Cat? { cats.first { $0.panel.isVisible } }
@@ -1071,6 +1076,41 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func openTodos() { todoWindow.show(near: speakFrame) }
     @objc private func copyClip(_ s: NSMenuItem) { clipboard.copyBack(s.tag); say("已复制，可以粘贴啦", seconds: 2) }
     @objc private func clearClips() { clipboard.clear() }
+    /// Reads only how long ago a key was pressed (no key contents, no extra permission).
+    private func typeAlongTick() {
+        let env = ProcessInfo.processInfo.environment
+        var idleFor = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        if let fake = env["CATPETS_FAKETYPING"], let stop = Double(fake) {   // debug: "typing" for the first N seconds
+            idleFor = ProcessInfo.processInfo.systemUptime - launchedAt < stop ? 0 : 99
+        }
+        guard idleFor < 1.5, typeAlong, !paused, !isQuiet, activePair == nil, meeting == nil else {
+            // In step with the keyboard: when the typing stops, so does the cat.
+            if let c = typist, c.action == "laptop" { c.play("idle") }
+            if typist != nil, env["CATPETS_DEBUG"] != nil { FileHandle.standardError.write("typist: stop\n".data(using: .utf8)!) }
+            typist = nil
+            return
+        }
+        let ready = cats.filter { $0.panel.isVisible && !$0.isBusy && $0.actions["laptop"] != nil }
+        guard !ready.isEmpty else { typist = nil; return }
+        let t = now
+        if let c = typist, ready.contains(where: { $0 === c }), t - typistSince < 15 {
+            // Still this cat's turn: start another round once the last one has finished.
+            if c.action == "idle" || c.action == "sleep" { c.play("laptop") }
+            return
+        }
+        // Hand over to the other cat (or start with whoever is free).
+        let prev = typist
+        let next = ready.first { $0 !== prev } ?? ready[0]
+        if let p = prev, p !== next, p.action == "laptop" { p.play("idle") }
+        typist = next
+        typistSince = t
+        if env["CATPETS_DEBUG"] != nil { FileHandle.standardError.write("typist: \(next.spec.id) \(Int(t))\n".data(using: .utf8)!) }
+        if next.action != "laptop" { next.play("laptop") }
+    }
+    @objc private func toggleTypeAlong() {
+        settings.set(!typeAlong, forKey: "typeAlong")
+        if !typeAlong, let c = typist, c.action == "laptop" { c.play("idle") }
+    }
     @objc private func toggleAutoQuiet() {
         settings.set(!autoQuiet, forKey: "autoQuiet")
         if !autoQuiet && isQuiet { leaveQuiet() }
@@ -1274,6 +1314,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             placeItem.submenu = places
             _ = add("偶尔自己散步、凑一起", #selector(toggleStrolls), to: m, on: settings.bool(forKey: "strolls"))
             _ = add("全屏 / 开会时自动安静", #selector(toggleAutoQuiet), to: m, on: autoQuiet)
+            _ = add("我打字时，它们轮流敲电脑", #selector(toggleTypeAlong), to: m, on: typeAlong)
             m.addItem(.separator())
             for (i, cat) in cats.enumerated() {
                 _ = add("显示\(cat.spec.name)", #selector(toggleCat(_:)), to: m, tag: i, on: cat.panel.isVisible || activePair != nil)
