@@ -9,7 +9,7 @@ tuantuan/paw tuantuan-paw
 tuantuan/groom tuantuan-groom
 tuantuan/sleep tuantuan-sleep
 tuantuan/walk tuantuan-walk
-tuantuan/held tuantuan-held2
+tuantuan/held tuantuan-held3
 pair/sleep pair-sleep
 pair/eat pair-eat
 pair/basket pair-basket
