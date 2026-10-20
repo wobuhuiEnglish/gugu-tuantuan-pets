@@ -137,7 +137,8 @@
               0,
               1000
             ]
-          ]
+          ],
+          "scale": 0.78
         },
         "held": {
           "label": "被拎起来",
@@ -160,7 +161,8 @@
               3,
               260
             ]
-          ]
+          ],
+          "scale": 1.18
         },
         "walk": {
           "label": "散步",
@@ -191,12 +193,13 @@
               6,
               130
             ]
-          ]
+          ],
+          "scale": 1.4
         },
         "stretch": {
           "label": "伸懒腰",
           "dir": "gugu/stretch",
-          "scale": 1.12,
+          "scale": 1.06,
           "seq": [
             [
               0,
@@ -404,7 +407,8 @@
               0,
               500
             ]
-          ]
+          ],
+          "scale": 1.06
         }
       }
     },
@@ -535,7 +539,8 @@
               0,
               1000
             ]
-          ]
+          ],
+          "scale": 0.67
         },
         "walk": {
           "label": "散步",
@@ -574,7 +579,8 @@
               7,
               115
             ]
-          ]
+          ],
+          "scale": 1.14
         },
         "held": {
           "label": "被抱起来",
@@ -597,7 +603,8 @@
               1,
               140
             ]
-          ]
+          ],
+          "scale": 1.06
         },
         "stretch": {
           "label": "伸懒腰",
@@ -835,7 +842,7 @@
               500
             ]
           ],
-          "scale": 0.9
+          "scale": 0.78
         },
         "belly": {
           "label": "翻肚皮",
@@ -886,7 +893,7 @@
     {
       "id": "sleep",
       "label": "一起睡觉",
-      "height": 92,
+      "height": 110,
       "action": {
         "label": "一起睡觉",
         "dir": "pair/sleep2",
@@ -904,7 +911,7 @@
       "id": "sleephug",
       "group": "sleep",
       "label": "一起睡觉",
-      "height": 130,
+      "height": 245,
       "action": {
         "label": "一起睡觉（抱着）",
         "dir": "pair/sleephug",
@@ -932,16 +939,40 @@
     {
       "id": "eat",
       "label": "一起吃饭",
-      "height": 103,
+      "height": 172,
       "seconds": 10,
       "action": {
         "label": "一起吃饭",
-        "dir": "pair/eat2",
+        "dir": "pair/eat3",
         "loop": true,
         "seq": [
           [
+            0,
+            1100
+          ],
+          [
             1,
-            1000
+            1500
+          ],
+          [
+            0,
+            900
+          ],
+          [
+            2,
+            1500
+          ],
+          [
+            0,
+            1300
+          ],
+          [
+            1,
+            1200
+          ],
+          [
+            2,
+            1400
           ]
         ]
       },
@@ -951,7 +982,7 @@
       "id": "eatback",
       "group": "eat",
       "label": "一起吃饭",
-      "height": 89,
+      "height": 174,
       "seconds": 10,
       "action": {
         "label": "一起吃饭（背影）",
@@ -981,7 +1012,7 @@
       "id": "cushion",
       "group": "lounge",
       "label": "一起窝着",
-      "height": 110,
+      "height": 153,
       "seconds": 45,
       "action": {
         "label": "一起趴在垫子上",
@@ -1007,7 +1038,7 @@
       "id": "bowl",
       "group": "lounge",
       "label": "一起窝着",
-      "height": 120,
+      "height": 156,
       "seconds": 45,
       "action": {
         "label": "一起窝在猫抓板里",
@@ -1049,7 +1080,7 @@
       "id": "side",
       "group": "lounge",
       "label": "一起窝着",
-      "height": 105,
+      "height": 113,
       "seconds": 45,
       "action": {
         "label": "一起并排趴着",
@@ -1091,7 +1122,7 @@
       "id": "lick",
       "group": "lick",
       "label": "舔毛",
-      "height": 120,
+      "height": 118,
       "seconds": 30,
       "action": {
         "label": "谷谷给团团舔毛",
