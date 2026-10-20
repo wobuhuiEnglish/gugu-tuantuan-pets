@@ -19,7 +19,7 @@ pair/cushion2 pair-cushion2
 pair/basket-fix pair-basket-fix
 pair/eatback pair-eatback
 gugu/stretch gugu-stretch2
-gugu/laptop gugu-laptop3
+gugu/laptop gugu-laptop4
 tuantuan/stretch tuantuan-stretch2
 tuantuan/laptop tuantuan-laptop
 tuantuan/belly tuantuan-belly
