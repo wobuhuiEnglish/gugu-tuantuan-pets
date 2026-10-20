@@ -25,3 +25,5 @@ tuantuan/laptop tuantuan-laptop
 tuantuan/belly tuantuan-belly
 pair/sleephug pair-hug2
 pair/bowl pair-bowl
+pair/side pair-side
+pair/lick pair-lick
