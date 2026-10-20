@@ -911,7 +911,7 @@
       "id": "sleephug",
       "group": "sleep",
       "label": "一起睡觉",
-      "height": 245,
+      "height": 170,
       "action": {
         "label": "一起睡觉（抱着）",
         "dir": "pair/sleephug",
