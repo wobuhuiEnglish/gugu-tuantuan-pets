@@ -978,6 +978,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let demo = ProcessInfo.processInfo.environment["CATPETS_DEMO"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.cats.forEach { $0.play(demo) } }
         }
+        if let pid = ProcessInfo.processInfo.environment["CATPETS_PAIR"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                if let p = self?.pairs.first(where: { $0.spec.id == pid }) { self?.startPair(p) }
+            }
+        }
+        if let dir = ProcessInfo.processInfo.environment["CATPETS_SNAPPAIR"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
+                guard let v = self?.pairView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+                v.cacheDisplay(in: v.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/pair.png"))
+            }
+        }
         if let dir = ProcessInfo.processInfo.environment["CATPETS_SNAPCATS"] {
             for (n, delay) in [3.2, 4.0, 4.8, 6.0].enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -1184,7 +1196,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     /// Called when a cat is about to nap: if the other one is idle nearby, nap together instead.
     func wantsCuddle(from cat: Cat) -> Bool {
-        guard !isQuiet, activePair == nil, meeting == nil, let pair = pairs.first(where: { $0.spec.id == "sleep" }),
+        guard !isQuiet, activePair == nil, meeting == nil, let pair = randomVariant("sleep"),
               let other = cats.first(where: { $0 !== cat }), other.panel.isVisible, other.isIdle,
               abs(other.panel.frame.midX - cat.panel.frame.midX) < 600 else { return false }
         startPair(pair)

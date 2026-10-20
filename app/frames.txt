@@ -9,7 +9,7 @@ tuantuan/paw tuantuan-paw
 tuantuan/groom tuantuan-groom
 tuantuan/sleep tuantuan-sleep
 tuantuan/walk tuantuan-walk
-tuantuan/held tuantuan-held
+tuantuan/held tuantuan-held2
 pair/sleep pair-sleep
 pair/eat pair-eat
 pair/basket pair-basket
@@ -23,3 +23,4 @@ gugu/laptop gugu-laptop4
 tuantuan/stretch tuantuan-stretch2
 tuantuan/laptop tuantuan-laptop
 tuantuan/belly tuantuan-belly
+pair/sleephug pair-hug2
