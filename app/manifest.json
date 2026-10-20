@@ -1089,8 +1089,8 @@
     },
     {
       "id": "lick",
-      "group": "lounge",
-      "label": "一起窝着",
+      "group": "lick",
+      "label": "舔毛",
       "height": 120,
       "seconds": 30,
       "action": {
