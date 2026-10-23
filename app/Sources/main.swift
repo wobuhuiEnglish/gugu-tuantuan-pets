@@ -582,7 +582,7 @@ final class TodoStore {
         let (text, due) = parseTodo(raw)
         guard !text.isEmpty else { return nil }
         let t = Todo(text: text, due: due)
-        items.append(t); save()
+        items.insert(t, at: 0); save()   // newest first
         return t
     }
     func toggle(_ id: UUID) {
@@ -616,7 +616,7 @@ final class KeyPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { onEscape?() }
 }
 
-/// The to-do list window: add at the bottom, tick to finish, × to delete.
+/// The to-do list window: newest on top, tick to finish, × to delete.
 final class TodoWindow: NSObject, NSTextFieldDelegate {
     let panel: KeyPanel
     private let store: TodoStore
@@ -679,43 +679,50 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(input)
     }
-    /// Rows are laid out by hand at a fixed height: simple and never overlaps.
+    /// Rows are laid out by hand; long items wrap and the row grows to fit, so nothing is cut off.
     func reload() {
         doc.subviews.forEach { $0.removeFromSuperview() }
-        let width: CGFloat = 340, rowH: CGFloat = 30, pad: CGFloat = 12
+        let width: CGFloat = 340, pad: CGFloat = 12, boxW: CGFloat = 22
+        let textW = width - pad * 2 - 30 - boxW
         var y: CGFloat = 10
         if store.items.isEmpty {
             empty.textColor = .secondaryLabelColor
             empty.frame = NSRect(x: pad, y: y, width: width - pad * 2, height: 22)
             doc.addSubview(empty)
-            y += rowH
+            y += 30
         }
-        let sorted = store.items.sorted { ($0.done ? 1 : 0, $0.due ?? .distantFuture) < ($1.done ? 1 : 0, $1.due ?? .distantFuture) }
+        // Open items first, finished ones below; each group keeps the store's newest-first order.
+        let sorted = store.items.filter { !$0.done } + store.items.filter { $0.done }
         for t in sorted {
             var title = t.text
             if let d = t.due { title = "⏰ \(dueLabel(d))  " + title }
-            let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(toggled(_:)))
+            let id = NSUserInterfaceItemIdentifier(t.id.uuidString)
+            let box = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggled(_:)))
             box.state = t.done ? .on : .off
-            box.identifier = NSUserInterfaceItemIdentifier(t.id.uuidString)
-            box.font = NSFont.systemFont(ofSize: 13)
-            if t.done {
-                box.attributedTitle = NSAttributedString(string: title, attributes: [
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 13)])
-            }
-            box.lineBreakMode = .byTruncatingTail
-            box.frame = NSRect(x: pad, y: y + 4, width: width - pad * 2 - 30, height: 22)
+            box.identifier = id
+            var attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
+            if t.done { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue; attrs[.foregroundColor] = NSColor.secondaryLabelColor }
+            let label = NSTextField(wrappingLabelWithString: "")
+            label.attributedStringValue = NSAttributedString(string: title, attributes: attrs)
+            label.identifier = id
+            label.isSelectable = false
+            label.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(labelClicked(_:))))
+            let textH = ceil(label.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: textW, height: .greatestFiniteMagnitude)).height)
+            let rowH = max(30, textH + 12)
+            box.frame = NSRect(x: pad, y: y + 4, width: boxW, height: 22)
+            label.frame = NSRect(x: pad + boxW, y: y + 6, width: textW, height: textH)
             let del = NSButton(title: "×", target: self, action: #selector(removed(_:)))
             del.bezelStyle = .inline
-            del.identifier = box.identifier
+            del.identifier = id
             del.toolTip = "删除"
             del.frame = NSRect(x: width - pad - 24, y: y + 4, width: 24, height: 22)
             let line = NSBox(frame: NSRect(x: pad, y: y + rowH - 1, width: width - pad * 2, height: 1))
             line.boxType = .separator
-            [box, del, line].forEach { doc.addSubview($0) }
+            [box, label, del, line].forEach { doc.addSubview($0) }
             y += rowH
         }
         doc.frame = NSRect(x: 0, y: 0, width: width, height: max(y + 10, scroll.contentSize.height))
+        scroll.contentView.scroll(to: .zero)   // show the newest item
     }
     @objc private func addFromInput() {
         let text = input.stringValue
@@ -724,6 +731,9 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         input.stringValue = ""
     }
     @objc private func toggled(_ b: NSButton) { if let s = b.identifier?.rawValue, let id = UUID(uuidString: s) { store.toggle(id) } }
+    @objc private func labelClicked(_ g: NSClickGestureRecognizer) {
+        if let s = g.view?.identifier?.rawValue, let id = UUID(uuidString: s) { store.toggle(id) }
+    }
     @objc private func removed(_ b: NSButton) { if let s = b.identifier?.rawValue, let id = UUID(uuidString: s) { store.remove(id) } }
     @objc private func clearDone() { store.clearDone() }
 }
