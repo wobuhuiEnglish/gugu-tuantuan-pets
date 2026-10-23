@@ -409,6 +409,29 @@
             ]
           ],
           "scale": 1.06
+        },
+        "jump": {
+          "label": "跳下",
+          "dir": "gugu/jump",
+          "loop": true,
+          "seq": [
+            [
+              0,
+              1000
+            ]
+          ],
+          "scale": 1.6
+        },
+        "land": {
+          "label": "落地",
+          "dir": "gugu/land",
+          "seq": [
+            [
+              0,
+              420
+            ]
+          ],
+          "scale": 1.6
         }
       }
     },
@@ -885,6 +908,29 @@
               300
             ]
           ]
+        },
+        "jump": {
+          "label": "跳下",
+          "dir": "tuantuan/jump",
+          "loop": true,
+          "seq": [
+            [
+              0,
+              1000
+            ]
+          ],
+          "scale": 1.88
+        },
+        "land": {
+          "label": "落地",
+          "dir": "tuantuan/land",
+          "seq": [
+            [
+              0,
+              420
+            ]
+          ],
+          "scale": 1.13
         }
       }
     }

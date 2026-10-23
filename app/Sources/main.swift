@@ -327,7 +327,9 @@ final class Cat {
             falling = true
             fallVX = clamp(dragVX * 50, -500, 500)
             fallVY = max(0, dragVY * 50)
-            if actions["held"] != nil { action = "held"; actionStart = now }
+            if abs(fallVX) > 40 { facingLeft = fallVX < 0 }
+            let pose = actions["jump"] != nil ? "jump" : (actions["held"] != nil ? "held" : action)
+            action = pose; actionStart = now
             return
         }
         if action == "held" || action == "walk" { play("idle") }
@@ -367,7 +369,8 @@ final class Cat {
             o.x = clamp(o.x + fallVX * dt, vis.minX, vis.maxX - panel.frame.width)
             if o.y <= vis.minY {
                 o.y = vis.minY
-                if fallVY < -500 * size { fallVY = -fallVY * 0.22; fallVX *= 0.5 }   // one small bounce
+                if actions["land"] != nil { falling = false; play("land"); savePosition() }   // crouch to absorb it, then idle
+                else if fallVY < -500 * size { fallVY = -fallVY * 0.22; fallVX *= 0.5 }   // one small bounce
                 else { falling = false; play("idle"); savePosition() }
             }
             panel.setFrameOrigin(o)
@@ -1016,16 +1019,31 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let demo = ProcessInfo.processInfo.environment["CATPETS_DEMO"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.cats.forEach { $0.play(demo) } }
         }
-        // Debug: CATPETS_DROPTEST lifts Gugu 400pt, lets go, and logs his height while he falls.
-        if ProcessInfo.processInfo.environment["CATPETS_DROPTEST"] != nil {
+        // Debug: CATPETS_DROPTEST=<dir> lifts both cats 400pt, lets go, logs the fall and snapshots idle / mid-air / landed.
+        if let dir = ProcessInfo.processInfo.environment["CATPETS_DROPTEST"] {
+            func snap(_ c: Cat, _ tag: String) {
+                guard let rep = c.view.bitmapImageRepForCachingDisplay(in: c.view.bounds) else { return }
+                c.view.cacheDisplay(in: c.view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/\(c.spec.id)-\(tag).png"))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.cats.forEach { snap($0, "0idle") } }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                guard let cat = self?.cats.first, let vis = cat.panel.screen?.visibleFrame else { return }
-                cat.beginDrag()
-                cat.panel.setFrameOrigin(NSPoint(x: cat.panel.frame.minX, y: vis.minY + 400))
-                cat.endDrag()
-                for i in 0..<30 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.05) {
-                        FileHandle.standardError.write("drop \(i * 50)ms y=\(Int(cat.panel.frame.minY - vis.minY)) \(cat.action)\n".data(using: .utf8)!)
+                for cat in self?.cats ?? [] {
+                    guard let vis = cat.panel.screen?.visibleFrame else { continue }
+                    cat.beginDrag()
+                    cat.panel.setFrameOrigin(NSPoint(x: cat.panel.frame.minX, y: vis.minY + 400))
+                    cat.endDrag()
+                    for i in 0..<20 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.05) {
+                            FileHandle.standardError.write("drop \(cat.spec.id) \(i * 50)ms y=\(Int(cat.panel.frame.minY - vis.minY)) \(cat.action)\n".data(using: .utf8)!)
+                            if i == 4 { snap(cat, "1air") }
+                        }
+                    }
+                    var landedSnap = false
+                    for i in 0..<40 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.02) {
+                            if !landedSnap && cat.action == "land" { landedSnap = true; snap(cat, "2land") }
+                        }
                     }
                 }
             }

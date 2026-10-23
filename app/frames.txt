@@ -28,3 +28,7 @@ pair/bowl pair-bowl
 pair/side pair-side
 pair/lick pair-lick
 pair/eat3 pair-eat3
+gugu/jump gugu-jump
+gugu/land gugu-land
+tuantuan/jump tuantuan-jump
+tuantuan/land tuantuan-land
