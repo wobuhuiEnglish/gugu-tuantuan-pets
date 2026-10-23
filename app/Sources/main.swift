@@ -154,6 +154,7 @@ final class Cat {
     private var walkTarget: Double?            // panel midX to walk to (for meeting the other cat)
     private var dragVX = 0.0, dragVY = 0.0     // smoothed drag speed, pt per event
     private var sidewaysAt = -10.0
+    private var falling = false, fallVX = 0.0, fallVY = 0.0   // pt/s, after being let go in mid-air
 
     init(spec: CatSpec, root: URL, now: Double) throws {
         self.spec = spec
@@ -264,7 +265,7 @@ final class Cat {
         hopStart = -10
         walkEnd = .infinity
     }
-    var isBusy: Bool { dragging || walkTarget != nil }
+    var isBusy: Bool { dragging || falling || walkTarget != nil }
     var isIdle: Bool { !dragging && walkTarget == nil && (action == "idle" || action == "sleep") }
     func cancelWalk() { walkTarget = nil; if action == "walk" { play("idle") } }
 
@@ -297,6 +298,7 @@ final class Cat {
     func beginDrag() {
         if owner?.isQuiet == true { return }
         dragging = true
+        falling = false
         lastActive = now
         dragVX = 0; dragVY = 0
         if walkTarget != nil { walkTarget = nil; owner?.meetingCancelled() }
@@ -320,6 +322,14 @@ final class Cat {
     func endDrag() {
         if owner?.isQuiet == true { return }
         dragging = false
+        // Let go above the floor: drop like a real cat, keeping a little of the throw.
+        if settings.bool(forKey: "gravity"), let vis = (panel.screen ?? NSScreen.main)?.visibleFrame, panel.frame.minY > vis.minY + 4 {
+            falling = true
+            fallVX = clamp(dragVX * 50, -500, 500)
+            fallVY = max(0, dragVY * 50)
+            if actions["held"] != nil { action = "held"; actionStart = now }
+            return
+        }
         if action == "held" || action == "walk" { play("idle") }
         savePosition()
         lastActive = now
@@ -348,6 +358,20 @@ final class Cat {
         }
         let dt = min(0.1, now - lastTick)
         lastTick = now
+        if falling && !dragging {
+            let vis = (panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+            var o = panel.frame.origin
+            fallVY -= 2600 * dt * size
+            fallVX *= pow(0.6, dt)
+            o.y += fallVY * dt
+            o.x = clamp(o.x + fallVX * dt, vis.minX, vis.maxX - panel.frame.width)
+            if o.y <= vis.minY {
+                o.y = vis.minY
+                if fallVY < -500 * size { fallVY = -fallVY * 0.22; fallVX *= 0.5 }   // one small bounce
+                else { falling = false; play("idle"); savePosition() }
+            }
+            panel.setFrameOrigin(o)
+        }
         if let target = walkTarget, !dragging {
             // Heading to meet the other cat: a bit faster, and stop exactly on the spot.
             var o = panel.frame.origin
@@ -938,7 +962,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .first(where: { $0.processIdentifier != me }) {
             other.activate(options: []); NSApp.terminate(nil); return
         }
-        settings.register(defaults: ["scale": 1.0, "strolls": true, "autoQuiet": true, "typeAlong": true])
+        settings.register(defaults: ["scale": 1.0, "strolls": true, "autoQuiet": true, "typeAlong": true, "gravity": true])
         do {
             guard let root = Bundle.main.url(forResource: "cats", withExtension: nil) else {
                 throw NSError(domain: "CatPets", code: 3, userInfo: [NSLocalizedDescriptionKey: "未找到应用内的猫咪图片。请保留完整的应用包。"])
@@ -991,6 +1015,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Debug: CATPETS_DEMO=<action> plays it on both cats; CATPETS_SNAPCATS=<dir> saves what they show.
         if let demo = ProcessInfo.processInfo.environment["CATPETS_DEMO"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.cats.forEach { $0.play(demo) } }
+        }
+        // Debug: CATPETS_DROPTEST lifts Gugu 400pt, lets go, and logs his height while he falls.
+        if ProcessInfo.processInfo.environment["CATPETS_DROPTEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let cat = self?.cats.first, let vis = cat.panel.screen?.visibleFrame else { return }
+                cat.beginDrag()
+                cat.panel.setFrameOrigin(NSPoint(x: cat.panel.frame.minX, y: vis.minY + 400))
+                cat.endDrag()
+                for i in 0..<30 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.05) {
+                        FileHandle.standardError.write("drop \(i * 50)ms y=\(Int(cat.panel.frame.minY - vis.minY)) \(cat.action)\n".data(using: .utf8)!)
+                    }
+                }
+            }
         }
         if let pid = ProcessInfo.processInfo.environment["CATPETS_PAIR"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -1325,6 +1363,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = add("偶尔自己散步、凑一起", #selector(toggleStrolls), to: m, on: settings.bool(forKey: "strolls"))
             _ = add("全屏 / 开会时自动安静", #selector(toggleAutoQuiet), to: m, on: autoQuiet)
             _ = add("我打字时，它们轮流敲电脑", #selector(toggleTypeAlong), to: m, on: typeAlong)
+            _ = add("拖到半空松手会掉下来", #selector(toggleGravity), to: m, on: settings.bool(forKey: "gravity"))
             m.addItem(.separator())
             for (i, cat) in cats.enumerated() {
                 _ = add("显示\(cat.spec.name)", #selector(toggleCat(_:)), to: m, tag: i, on: cat.panel.isVisible || activePair != nil)
@@ -1371,6 +1410,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if activePair != nil { endPair() }
         if let p = randomVariant(pairGroups[s.tag].key) { startPair(p) }
     }
+    @objc private func toggleGravity() { settings.set(!settings.bool(forKey: "gravity"), forKey: "gravity") }
     @objc private func toggleStrolls() { settings.set(!settings.bool(forKey: "strolls"), forKey: "strolls") }
     @objc private func toggleCat(_ s: NSMenuItem) {
         let cat = cats[s.tag]
