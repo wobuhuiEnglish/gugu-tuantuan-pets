@@ -45,7 +45,7 @@ final class InputTweaks: NSObject {
     // MARK: Menu
 
     func menuItem() -> NSMenuItem {
-        let root = NSMenuItem(title: "🖱 鼠标和键盘", action: nil, keyEquivalent: "")
+        let root = NSMenuItem(title: "🖱 滚轮、侧键、外接键盘…", action: nil, keyEquivalent: "")
         let m = NSMenu()
         func add(_ title: String, _ sel: Selector?, to menu: NSMenu = m, rep: Any? = nil, on: Bool? = nil) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: sel, keyEquivalent: "")

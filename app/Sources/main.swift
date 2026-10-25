@@ -1083,6 +1083,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out))
             }
         }
+        // Debug: CATPETS_MENUDUMP prints the menu tree to stderr.
+        if ProcessInfo.processInfo.environment["CATPETS_MENUDUMP"] != nil {
+            DispatchQueue.main.async {
+                func dump(_ m: NSMenu, _ d: Int) {
+                    for i in m.items {
+                        let line = i.isSeparatorItem ? "──" : (i.state == .on ? "✓ " : "") + i.title + (i.isEnabled && i.action == nil && i.submenu == nil ? "  (标题)" : "")
+                        FileHandle.standardError.write((String(repeating: "    ", count: d) + line + "\n").data(using: .utf8)!)
+                        if let s = i.submenu { dump(s, d + 1) }
+                    }
+                }
+                dump(self.makeMenu(), 0)
+            }
+        }
         if ProcessInfo.processInfo.environment["CATPETS_OPEN"] == "note" { DispatchQueue.main.async { self.openQuickNote() } }
         let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
         timer.tolerance = 0.006
@@ -1331,6 +1344,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             m.addItem(item)
             return item
         }
+        /// A small grey title that groups the items below it.
+        func header(_ title: String, in m: NSMenu) {
+            if #available(macOS 14.0, *) { m.addItem(.sectionHeader(title: title)) }
+            else {
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                item.attributedTitle = NSAttributedString(string: title, attributes: [.font: NSFont.boldSystemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+                m.addItem(item)
+            }
+        }
         func sub(_ title: String, _ build: (NSMenu) -> Void) {
             let item = add(title, #selector(noop))
             let m = NSMenu()
@@ -1341,6 +1363,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         // Tools
+        header("小工具", in: menu)
         let n = todos.openCount
         _ = add(n > 0 ? "📝 待办（\(n)）…" : "📝 待办…", #selector(openTodos))
         let quick = add("✏️ 记一笔", #selector(openQuickNote))
@@ -1358,6 +1381,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         // Cats
+        header("让它们做点什么", in: menu)
         for (i, cat) in cats.enumerated() {
             sub("🐱 " + cat.spec.name) { m in
                 for key in cat.spec.order where cat.actions[key] != nil {
@@ -1375,6 +1399,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Settings
         sub("⚙️ 设置") { m in
+            header("外观", in: m)
             let sizeItem = add("大小", #selector(noop), to: m)
             let sizes = NSMenu()
             for pct in [70, 85, 100, 125, 150] {
@@ -1388,19 +1413,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 _ = add(title, #selector(setPlacement(_:)), to: places, rep: key, on: placement == key)
             }
             placeItem.submenu = places
-            _ = add("偶尔自己散步、凑一起", #selector(toggleStrolls), to: m, on: settings.bool(forKey: "strolls"))
-            _ = add("全屏 / 开会时自动安静", #selector(toggleAutoQuiet), to: m, on: autoQuiet)
-            _ = add("我打字时，它们轮流敲电脑", #selector(toggleTypeAlong), to: m, on: typeAlong)
-            _ = add("拖到半空松手会掉下来", #selector(toggleGravity), to: m, on: settings.bool(forKey: "gravity"))
-            m.addItem(.separator())
-            m.addItem(input.menuItem())
-            m.addItem(.separator())
             for (i, cat) in cats.enumerated() {
                 _ = add("显示\(cat.spec.name)", #selector(toggleCat(_:)), to: m, tag: i, on: cat.panel.isVisible || activePair != nil)
             }
             m.addItem(.separator())
+            header("猫咪自己的小动作", in: m)
+            _ = add("偶尔自己散步、凑一起", #selector(toggleStrolls), to: m, on: settings.bool(forKey: "strolls"))
+            _ = add("我打字时，它们轮流敲电脑", #selector(toggleTypeAlong), to: m, on: typeAlong)
+            _ = add("拖到半空松手会跳下来", #selector(toggleGravity), to: m, on: settings.bool(forKey: "gravity"))
+            _ = add("全屏 / 开会时自动安静", #selector(toggleAutoQuiet), to: m, on: autoQuiet)
+            m.addItem(.separator())
+            header("鼠标和键盘", in: m)
+            m.addItem(input.menuItem())
+            m.addItem(.separator())
             _ = add("玩法：单击互动 · 拖动搬家 · ⌥空格 记一笔", nil, to: m)
         }
+        menu.addItem(.separator())
         _ = add(paused ? "▶️ 继续活动" : "⏸ 暂停活动", #selector(togglePause))
         _ = add("🏠 把两只猫叫回右下角", #selector(resetPositions))
         menu.addItem(.separator())
