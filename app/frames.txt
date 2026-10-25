@@ -32,3 +32,4 @@ gugu/jump gugu-jump
 gugu/land gugu-land
 tuantuan/jump tuantuan-jump
 tuantuan/land tuantuan-land
+pair/eatback2 pair-eatback2

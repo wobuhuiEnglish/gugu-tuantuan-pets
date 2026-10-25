@@ -951,7 +951,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastQuietCheck = 0.0, lastSlowTick = 0.0
     /// While the user types, one cat taps on its laptop; they take turns.
     private var typeAlong: Bool { settings.bool(forKey: "typeAlong") }
-    private var typist: Cat?, typistSince = 0.0
+    private var typist: Cat?, typistSince = 0.0, lastTypeCheck = 0.0
+    private var typedFor: [String: Double] = [:]   // seconds each cat has typed, so turns stay fair
     private let launchedAt = ProcessInfo.processInfo.systemUptime
     private let bubble = Bubble()
     let todos = TodoStore()
@@ -1089,6 +1090,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func tick() {
         slowTick()
+        let real = ProcessInfo.processInfo.systemUptime
+        if real - lastTypeCheck >= 0.1 { typeAlongTick(dt: real - lastTypeCheck); lastTypeCheck = real }
         guard !paused, !menuOpen else { return }
         let t = now
         for cat in cats where cat.panel.isVisible { cat.tick(t) }
@@ -1121,7 +1124,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if ProcessInfo.processInfo.environment["CATPETS_DEBUG"] != nil { print("quiet check:", autoQuiet, want, isQuiet) }
             if want != isQuiet { want ? enterQuiet() : leaveQuiet() }
         }
-        typeAlongTick()
     }
     /// Which cat speaks: Gugu for reminders, whichever is visible otherwise.
     private var speaker: Cat? { cats.first { $0.panel.isVisible } }
@@ -1143,15 +1145,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyClip(_ s: NSMenuItem) { clipboard.copyBack(s.tag); say("已复制，可以粘贴啦", seconds: 2) }
     @objc private func clearClips() { clipboard.clear() }
     /// Reads only how long ago a key was pressed (no key contents, no extra permission).
-    private func typeAlongTick() {
+    private func typeAlongTick(dt: Double) {
         let env = ProcessInfo.processInfo.environment
         var idleFor = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-        if let fake = env["CATPETS_FAKETYPING"], let stop = Double(fake) {   // debug: "typing" for the first N seconds
-            idleFor = ProcessInfo.processInfo.systemUptime - launchedAt < stop ? 0 : 99
+        if let fake = env["CATPETS_FAKETYPING"] {   // debug: "a,b" = type for a seconds, pause, type again until b
+            let parts = fake.split(separator: ",").compactMap { Double($0) }, up = ProcessInfo.processInfo.systemUptime - launchedAt
+            let typing = parts.count == 2 ? (up < parts[0] || (up > parts[0] + 3 && up < parts[1])) : up < (parts.first ?? 0)
+            idleFor = typing ? 0 : 99
         }
-        guard idleFor < 1.5, typeAlong, !paused, !isQuiet, activePair == nil, meeting == nil else {
+        let pose: (Cat) -> String = { $0.actions["typing"] != nil ? "typing" : "laptop" }
+        guard idleFor < 0.6, typeAlong, !paused, !isQuiet, activePair == nil, meeting == nil else {
             // In step with the keyboard: when the typing stops, so does the cat.
-            if let c = typist, c.action == "laptop" { c.play("idle") }
+            if let c = typist, c.action == pose(c) { c.play("idle") }
             if typist != nil, env["CATPETS_DEBUG"] != nil { FileHandle.standardError.write("typist: stop\n".data(using: .utf8)!) }
             typist = nil
             return
@@ -1159,23 +1164,26 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let ready = cats.filter { $0.panel.isVisible && !$0.isBusy && $0.actions["laptop"] != nil }
         guard !ready.isEmpty else { typist = nil; return }
         let t = now
-        if let c = typist, ready.contains(where: { $0 === c }), t - typistSince < 15 {
-            // Still this cat's turn: start another round once the last one has finished.
-            if c.action == "idle" || c.action == "sleep" { c.play("laptop") }
-            return
+        if let c = typist, ready.contains(where: { $0 === c }) {
+            typedFor[c.spec.id, default: 0] += min(dt, 0.5)
+            if t - typistSince < 10 || ready.count == 1 {
+                if c.action != pose(c) { c.play(pose(c)) }
+                return
+            }
         }
-        // Hand over to the other cat (or start with whoever is free).
+        // A new burst goes to whoever has typed less; mid-burst, swap to the other cat.
         let prev = typist
-        let next = ready.first { $0 !== prev } ?? ready[0]
-        if let p = prev, p !== next, p.action == "laptop" { p.play("idle") }
+        let next = prev == nil ? ready.min { typedFor[$0.spec.id, default: 0] < typedFor[$1.spec.id, default: 0] }!
+                               : (ready.first { $0 !== prev } ?? ready[0])
+        if let p = prev, p !== next, p.action == pose(p) { p.play("idle") }
         typist = next
         typistSince = t
         if env["CATPETS_DEBUG"] != nil { FileHandle.standardError.write("typist: \(next.spec.id) \(Int(t))\n".data(using: .utf8)!) }
-        if next.action != "laptop" { next.play("laptop") }
+        next.play(pose(next))
     }
     @objc private func toggleTypeAlong() {
         settings.set(!typeAlong, forKey: "typeAlong")
-        if !typeAlong, let c = typist, c.action == "laptop" { c.play("idle") }
+        if !typeAlong, let c = typist, c.action == "laptop" || c.action == "typing" { c.play("idle") }
     }
     @objc private func toggleAutoQuiet() {
         settings.set(!autoQuiet, forKey: "autoQuiet")
