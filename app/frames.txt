@@ -34,3 +34,4 @@ tuantuan/land tuantuan-land
 pair/eatback2 pair-eatback2
 gugu/laptop gugu-laptop5
 gugu/play gugu-play
+tuantuan/rollover tuantuan-rollover

@@ -394,13 +394,15 @@
         "belly",
         "sleep",
         "stretch",
-        "laptop"
+        "laptop",
+        "rollover"
       ],
       "click": [
         "paw",
         "groom",
         "laptop",
-        "belly"
+        "belly",
+        "rollover"
       ],
       "actions": {
         "idle": {
@@ -908,6 +910,33 @@
             ]
           ],
           "scale": 0.78
+        },
+        "rollover": {
+          "label": "仰面翻肚皮",
+          "dir": "tuantuan/rollover",
+          "scale": 1.24,
+          "seq": [
+            [
+              0,
+              2600
+            ],
+            [
+              1,
+              180
+            ],
+            [
+              0,
+              2200
+            ],
+            [
+              1,
+              160
+            ],
+            [
+              0,
+              1600
+            ]
+          ]
         }
       }
     }
