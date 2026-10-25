@@ -29,7 +29,7 @@ fi
 for ARCH in arm64 x86_64; do
   xcrun swiftc -O "$APP_DIR"/Sources/*.swift -o "$BUILD/CatPets-$ARCH" \
     -sdk "$SDK" -target "$ARCH-apple-macosx13.0" -module-cache-path "$BUILD/mc-$ARCH" \
-    "${OVERLAY[@]}" -framework AppKit -framework ImageIO -framework Carbon
+    "${OVERLAY[@]}" -framework AppKit -framework ImageIO -framework Carbon -framework IOKit
 done
 lipo -create "$BUILD/CatPets-arm64" "$BUILD/CatPets-x86_64" -output "$APP/Contents/MacOS/CatPets"
 

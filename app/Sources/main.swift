@@ -959,6 +959,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var todoWindow = TodoWindow(store: todos)
     private let quickNote = QuickNote()
     private let clipboard = ClipboardHistory()
+    private let input = InputTweaks()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let me = ProcessInfo.processInfo.processIdentifier
@@ -967,6 +968,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             other.activate(options: []); NSApp.terminate(nil); return
         }
         settings.register(defaults: ["scale": 1.0, "strolls": true, "autoQuiet": true, "typeAlong": true, "gravity": true])
+        input.start()
         do {
             guard let root = Bundle.main.url(forResource: "cats", withExtension: nil) else {
                 throw NSError(domain: "CatPets", code: 3, userInfo: [NSLocalizedDescriptionKey: "未找到应用内的猫咪图片。请保留完整的应用包。"])
@@ -1391,6 +1393,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = add("我打字时，它们轮流敲电脑", #selector(toggleTypeAlong), to: m, on: typeAlong)
             _ = add("拖到半空松手会掉下来", #selector(toggleGravity), to: m, on: settings.bool(forKey: "gravity"))
             m.addItem(.separator())
+            m.addItem(input.menuItem())
+            m.addItem(.separator())
             for (i, cat) in cats.enumerated() {
                 _ = add("显示\(cat.spec.name)", #selector(toggleCat(_:)), to: m, tag: i, on: cat.panel.isVisible || activePair != nil)
             }
@@ -1472,7 +1476,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for cat in cats { show(cat) }
         return true
     }
-    func applicationWillTerminate(_ notification: Notification) { for cat in cats { cat.savePosition() } }
+    func applicationWillTerminate(_ notification: Notification) { for cat in cats { cat.savePosition() }; input.stop() }
 }
 
 let app = NSApplication.shared
