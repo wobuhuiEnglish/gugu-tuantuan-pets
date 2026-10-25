@@ -1,9 +1,9 @@
 #!/bin/bash
-# Builds "谷谷和团团.app" from Sources/main.swift, manifest.json and the cut-out frames.
+# Builds "赛博儿的.app" from Sources/main.swift, manifest.json and the cut-out frames.
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PETS="$(cd "$APP_DIR/.." && pwd)"
-APP="$APP_DIR/谷谷和团团.app"
+APP="$APP_DIR/赛博儿的.app"
 BUILD="$APP_DIR/.build"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/cats" "$BUILD"
@@ -59,8 +59,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>io.github.wobuhuienglish.gugu-tuantuan-pets</string>
-<key>CFBundleName</key><string>谷谷和团团</string>
-<key>CFBundleDisplayName</key><string>谷谷和团团</string>
+<key>CFBundleName</key><string>赛博儿的</string>
+<key>CFBundleDisplayName</key><string>赛博儿的</string>
 <key>CFBundleExecutable</key><string>CatPets</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>

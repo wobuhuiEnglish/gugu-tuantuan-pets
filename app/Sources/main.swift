@@ -656,7 +656,7 @@ final class TodoWindow: NSObject, NSTextFieldDelegate {
         panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 380),
                          styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
-        panel.title = "待办 · 谷谷和团团"
+        panel.title = "待办 · 赛博儿的"
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
@@ -999,8 +999,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pairPanel.contentView = pairView
 
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        status.button?.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "谷谷和团团")
-        status.button?.toolTip = "谷谷和团团"
+        status.button?.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "赛博儿的")
+        status.button?.toolTip = "赛博儿的"
         status.button?.target = self
         status.button?.action = #selector(openStatusMenu)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
@@ -1359,7 +1359,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             build(m)
             item.submenu = m
         }
-        _ = add(isQuiet ? "谷谷和团团 · 安静中 zzz" : (paused ? "谷谷和团团 · 已暂停" : "谷谷和团团"), nil)
+        _ = add(isQuiet ? "赛博儿的 · 安静中 zzz" : (paused ? "赛博儿的 · 已暂停" : "赛博儿的"), nil)
         menu.addItem(.separator())
 
         // Tools
